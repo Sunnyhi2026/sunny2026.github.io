@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>다각형 넓이 완전정복</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --grid-size: 40px; 
+            --grid-color: #e2e8f0;
+        }
+        body { font-family: 'Nanum Gothic', sans-serif; background-color: #f8fafc; overflow: hidden; }
+        
+        /* 모눈종이 배경 - 가로세로 정사각형 격자 */
+        .grid-bg {
+            background-color: #ffffff;
+            background-image: 
+                linear-gradient(var(--grid-color) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+            background-size: var(--grid-size) var(--grid-size);
+            background-position: -1px -1px;
+        }
+
+        /* 도형 요소 스타일 - 모눈 격자가 잘 보이도록 투명도 40% 적용 */
+        .shape-element {
+            cursor: move;
+            transition: stroke-width 0.2s, filter 0.2s;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+            fill-opacity: 0.4; 
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+        
+        /* 선택된 도형 강조 테두리 효과 */
+        .selected { 
+            stroke: #3b82f6 !important; 
+            stroke-width: 4px !important; 
+            filter: drop-shadow(0 0 12px rgba(59,130,246,0.5)); 
+        }
+        
+        .tool-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .tool-btn:active { transform: scale(0.95); }
+        
+        /* 안내 알림창(토스트) 효과 */
+        #toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+        }
+        #toast.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+<!-- 상단 헤더 영역 -->
+<header class="bg-white border-b p-4 flex justify-between items-center shadow-sm z-20">
+    <div class="flex items-center gap-3">
+        <div class="bg-blue-600 text-white p-2 rounded-xl shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+        </div>
+        <div>
+            <h1 class="text-lg font-extrabold text-slate-800">다각형 넓이 완전정복</h1>
+            <p class="text-[11px] text-slate-500 font-bold uppercase tracking-tight">도형을 조작하여 넓이의 기본 원리를 탐구합니다.</p>
+        </div>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="undo()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-full text-sm font-bold hover:bg-slate-200 transition flex items-center gap-1 border border-slate-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+            실행 취소
+        </button>
+        <button onclick="clearCanvas()" class="px-4 py-2 bg-rose-50 text-rose-600 rounded-full text-sm font-bold hover:bg-rose-100 transition border border-rose-100">모두 지우기</button>
+    </div>
+</header>
+
+<!-- 메인 콘텐츠 영역 -->
+<main class="flex-1 relative flex overflow-hidden">
+    <!-- 왼쪽 사이드바: 도형 패널 및 컨트롤러 -->
+    <aside class="w-72 bg-white border-r p-5 flex flex-col gap-6 z-10 shadow-xl overflow-y-auto">
+        <!-- 도형 추가 카드 영역 -->
+        <div>
+            <p class="text-[11px] font-black text-slate-400 mb-3 uppercase tracking-widest text-center">도형 추가하기</p>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="addShape('parallelogram')" class="tool-btn flex flex-col items-center p-3 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 border border-blue-100">
+                    <span class="text-2xl mb-1">▱</span>
+                    <span class="text-[11px] font-bold">평행사변형</span>
+                </button>
+                <button onclick="addShape('triangle')" class="tool-btn flex flex-col items-center p-3 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 border border-emerald-100">
+                    <span class="text-2xl mb-1">▲</span>
+                    <span class="text-[11px] font-bold">삼각형</span>
+                </button>
+                <button onclick="addShape('rhombus')" class="tool-btn flex flex-col items-center p-3 bg-violet-50 text-violet-700 rounded-2xl hover:bg-violet-100 border border-violet-100">
+                    <span class="text-2xl mb-1">◆</span>
+                    <span class="text-[11px] font-bold">마름모</span>
+                </button>
+                <button onclick="addShape('trapezoid')" class="tool-btn flex flex-col items-center p-3 bg-amber-50 text-amber-700 rounded-2xl hover:bg-amber-100 border border-amber-100">
+                    <span class="text-2xl mb-1">⏢</span>
+                    <span class="text-[11px] font-bold">사다리꼴</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 편집 도구 영역 -->
+        <div class="pt-4 border-t border-slate-100 space-y-2">
+            <p class="text-[11px] font-black text-slate-400 mb-3 uppercase tracking-widest text-center">조작 및 편집</p>
+            
+            <!-- 모드 전환 버튼: 이동 및 선택 -->
+            <button id="moveModeBtn" onclick="setMode('move')" class="w-full p-4 bg-blue-600 text-white rounded-2xl font-bold flex justify-between items-center shadow-md">
+                <span>이동 및 선택</span>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" /></svg>
+            </button>
+            
+            <!-- 회전 및 반전 컨트롤 -->
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="rotateSelected()" class="p-3 bg-white border border-blue-200 text-blue-700 rounded-2xl font-bold text-xs flex flex-col items-center gap-1 hover:bg-blue-50 transition shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581" /></svg>
+                    <span>90도 회전</span>
+                </button>
+                <button onclick="flipSelected()" class="p-3 bg-white border border-indigo-200 text-indigo-700 rounded-2xl font-bold text-xs flex flex-col items-center gap-1 hover:bg-indigo-50 transition shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m0 0l-3-3m3 3l-3 3m-8 7h8m0 0l-3-3m3 3l-3 3" /></svg>
+                    <span>좌우 반전</span>
+                </button>
+            </div>
+            
+            <!-- 모드 전환 버튼: 자르기 -->
+            <button id="cutModeBtn" onclick="toggleCutMode()" class="w-full p-4 bg-white border border-rose-200 text-rose-700 rounded-2xl font-bold flex justify-between items-center hover:bg-rose-50 transition shadow-sm">
+                <span>도형 자르기 (가위)</span>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7" /></svg>
+            </button>
+            
+            <!-- 개별 삭제 -->
+            <button onclick="deleteSelected()" class="w-full p-3 bg-white border border-slate-200 text-slate-400 rounded-2xl font-bold text-sm hover:text-rose-600 hover:border-rose-200 transition">
+                선택한 조각 삭제
+            </button>
+        </div>
+
+        <!-- 하단 교육 가이드 안내 문구 -->
+        <div class="mt-auto bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <h2 class="text-[12px] font-bold text-slate-700 mb-1">학습 가이드</h2>
+            <p class="text-[12px] text-slate-600 leading-relaxed font-medium">
+                가위 도구로 도형을 분할한 뒤, 조각들을 뒤집거나 돌려서 서로 연결해 보세요. 조각들이 인접한 위치에 도달하면 자동으로 가장자리가 달라붙어 빈틈없는 다각형을 결합할 수 있습니다.
+            </p>
+        </div>
+    </aside>
+
+    <!-- 메인 캔버스: 모눈종이 워크스페이스 -->
+    <section class="flex-1 relative grid-bg" id="workspace" style="touch-action: none;">
+        <svg id="mainSvg" class="w-full h-full" style="touch-action: none;">
+            <!-- 도형 드로잉 레이어 -->
+            <g id="shapesGroup"></g>
+            <!-- 자르기 드래그 시 점선 가이드 레이어 -->
+            <line id="cutLine" stroke="#f43f5e" stroke-width="3" stroke-dasharray="8,4" visibility="hidden" />
+        </svg>
+    </section>
+</main>
+
+<!-- 메시지 표출용 하단 토스트 박스 -->
+<div id="toast" class="bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl font-bold text-sm"></div>
+
+<script>
+    const mainSvg = document.getElementById('mainSvg');
+    const shapesGroup = document.getElementById('shapesGroup');
+    const cutLine = document.getElementById('cutLine');
+    const toast = document.getElementById('toast');
+
+    const GRID_SIZE = 40; // 한 격자(모눈)의 픽셀 크기
+    let mode = 'move';    // 현재 편집 모드 ('move' 또는 'cut')
+    let shapes = [];      // 캔버스 내 도형 상태 데이터 배열
+    let historyStack = []; // 실행 취소를 위한 기록 저장소
+    const MAX_HISTORY = 20; // 최대 취소 가능 단계
+
+    let selectedShapeId = null;
+    let isDragging = false;
+    let dragTarget = null;
+    let startX, startY;
+    let cutStart = null;
+
+    // 로컬 스토리지 데이터 백업 초기 로딩
+    window.onload = () => {
+        const saved = localStorage.getItem('polygon_master_v4');
+        if (saved) {
+            shapes = JSON.parse(saved);
+            renderShapes();
+        }
+    };
+
+    // 실행 취소를 위한 현재 상태 스냅샷 저장
+    function pushHistory() {
+        historyStack.push(JSON.stringify(shapes));
+        if (historyStack.length > MAX_HISTORY) historyStack.shift();
+    }
+
+    // 실행 취소(Undo) 핸들러
+    function undo() {
+        if (historyStack.length === 0) {
+            showToast('되돌릴 작업 내역이 존재하지 않습니다.');
+            return;
+        }
+        const lastState = historyStack.pop();
+        shapes = JSON.parse(lastState);
+        selectedShapeId = null;
+        renderShapes();
+        saveState();
+        showToast('이전 조작 단계로 취소 및 복구되었습니다.');
+    }
+
+    // 다각형 신규 생성 메소드 (초등 교과 맞춤 치수 설계)
+    function addShape(type) {
+        pushHistory();
+        setMode('move');
+        const id = Date.now();
+        let points = [];
+        let color = '';
+        
+        switch(type) {
+            case 'parallelogram':
+                points = [[0,0], [160,0], [240,120], [80,120]]; // 평행사변형 (가로 4칸, 높이 3칸)
+                color = '#dbeafe'; 
+                break;
+            case 'triangle':
+                points = [[0,120], [120,0], [240,120]]; // 삼각형 (밑변 6칸, 높이 3칸)
+                color = '#d1fae5'; 
+                break;
+            case 'rhombus':
+                points = [[80,0], [160,80], [80,160], [0,80]]; // 마름모 (가로대각선 4칸, 세로대각선 4칸)
+                color = '#ede9fe'; 
+                break;
+            case 'trapezoid':
+                points = [[40,0], [120,0], [160,120], [0,120]]; // 사다리꼴 (윗변 2칸, 아랫변 4칸, 높이 3칸)
+                color = '#fef3c7'; 
+                break;
+        }
+
+        shapes.push({
+            id, type, points, color, 
+            x: GRID_SIZE * 4, y: GRID_SIZE * 4, 
+            rotation: 0, flipped: false, stroke: '#475569'
+        });
+        
+        selectedShapeId = id;
+        renderShapes();
+        saveState();
+    }
+
+    // SVG 도형 렌더링 업데이트
+    function renderShapes() {
+        shapesGroup.innerHTML = '';
+        shapes.forEach(shape => {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            g.setAttribute("transform", `translate(${shape.x}, ${shape.y}) rotate(${shape.rotation})`);
+            
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            const pointsStr = shape.points.map(p => p.join(',')).join(' ');
+            polygon.setAttribute("points", pointsStr);
+            polygon.setAttribute("fill", shape.color);
+            polygon.setAttribute("stroke", shape.stroke);
+            polygon.setAttribute("stroke-width", "2");
+            
+            polygon.setAttribute("class", "shape-element " + (selectedShapeId === shape.id ? 'selected' : ''));
+            polygon.style.transform = `scaleX(${shape.flipped ? -1 : 1})`;
+
+            // 마우스/터치 호환 드래그 스타트 이벤트 위임
+            const startDrag = (e) => {
+                if (mode === 'move') {
+                    e.stopPropagation();
+                    if (e.cancelable) e.preventDefault();
+                    pushHistory(); 
+                    isDragging = true;
+                    selectedShapeId = shape.id;
+                    dragTarget = shape;
+                    const pt = getSVGPoint(e);
+                    startX = pt.x - shape.x;
+                    startY = pt.y - shape.y;
+                    renderShapes();
+                }
+            };
+
+            g.addEventListener('mousedown', startDrag);
+            g.addEventListener('touchstart', startDrag, { passive: false });
+
+            g.appendChild(polygon);
+            shapesGroup.appendChild(g);
+        });
+    }
+
+    // 선택된 도형 90도 회전
+    function rotateSelected() {
+        if (!selectedShapeId) { showToast('회전 조작할 조각을 지정해 주세요.'); return; }
+        pushHistory();
+        const shape = shapes.find(s => s.id === selectedShapeId);
+        if (shape) {
+            shape.rotation = (shape.rotation + 90) % 360;
+            renderShapes();
+            saveState();
+        }
+    }
+
+    // 선택된 도형 거울상 좌우 반전
+    function flipSelected() {
+        if (!selectedShapeId) { showToast('좌우 반전할 조각을 지정해 주세요.'); return; }
+        pushHistory();
+        const shape = shapes.find(s => s.id === selectedShapeId);
+        if (shape) {
+            shape.flipped = !shape.flipped;
+            renderShapes();
+            saveState();
+            showToast(shape.flipped ? '도형이 좌우로 반전되었습니다.' : '도형이 정방향으로 재정렬되었습니다.');
+        }
+    }
+
+    // 선택 조각 삭제
+    function deleteSelected() {
+        if (!selectedShapeId) return;
+        pushHistory();
+        shapes = shapes.filter(s => s.id !== selectedShapeId);
+        selectedShapeId = null;
+        renderShapes();
+        saveState();
+    }
+
+    // 모드 스위처 (이동모드, 자르기모드 분기)
+    function setMode(newMode) {
+        mode = newMode;
+        const mBtn = document.getElementById('moveModeBtn');
+        const cBtn = document.getElementById('cutModeBtn');
+        if(mode === 'move') {
+            mBtn.className = 'w-full p-4 bg-blue-600 text-white rounded-2xl font-bold flex justify-between items-center shadow-md';
+            cBtn.className = 'w-full p-4 bg-white border border-rose-200 text-rose-700 rounded-2xl font-bold flex justify-between items-center hover:bg-rose-50 transition shadow-sm';
+            mainSvg.style.cursor = 'default';
+        } else {
+            cBtn.className = 'w-full p-4 bg-rose-600 text-white rounded-2xl font-bold flex justify-between items-center shadow-md';
+            mBtn.className = 'w-full p-4 bg-white border border-blue-200 text-blue-700 rounded-2xl font-bold flex justify-between items-center hover:bg-blue-50 transition shadow-sm';
+            mainSvg.style.cursor = 'crosshair';
+            showToast('자르기 모드가 활성화되었습니다. 도형 영역을 드래그해 오려내세요.');
+        }
+    }
+
+    function toggleCutMode() {
+        mode === 'cut' ? setMode('move') : setMode('cut');
+    }
+
+    // 디바이스 스크린 좌표에서 SVG 좌표계로 변환 (모바일 및 패드 스크롤 간섭 예방)
+    function getSVGPoint(e) {
+        const pt = mainSvg.createSVGPoint();
+        if (e.touches && e.touches.length > 0) {
+            pt.x = e.touches[0].clientX;
+            pt.y = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            pt.x = e.changedTouches[0].clientX;
+            pt.y = e.changedTouches[0].clientY;
+        } else {
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+        }
+        return pt.matrixTransform(mainSvg.getScreenCTM().inverse());
+    }
+
+    // 드래그 및 자르기 조작 기점 핸들러
+    const handleStart = (e) => {
+        if (mode === 'cut') {
+            if (e.cancelable) e.preventDefault();
+            const pt = getSVGPoint(e);
+            cutStart = pt;
+            cutLine.setAttribute('x1', pt.x); cutLine.setAttribute('y1', pt.y);
+            cutLine.setAttribute('x2', pt.x); cutLine.setAttribute('y2', pt.y);
+            cutLine.setAttribute('visibility', 'visible');
+        } else {
+            selectedShapeId = null;
+            renderShapes();
+        }
+    };
+
+    mainSvg.addEventListener('mousedown', handleStart);
+    mainSvg.addEventListener('touchstart', handleStart, { passive: false });
+
+    // 다각형 각 꼭짓점의 SVG 캔버스 기준 절대 좌표 도출 (자석 정밀 스냅 전처리용 기하 계산기)
+    function getAbsolutePoints(shape, tempX = shape.x, tempY = shape.y) {
+        const rad = shape.rotation * Math.PI / 180;
+        const xs = shape.points.map(pt => pt[0]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const centerX = (minX + maxX) / 2;
+
+        return shape.points.map(pt => {
+            let lx = pt[0];
+            let ly = pt[1];
+            // 반전 반영
+            if (shape.flipped) {
+                lx = centerX - (lx - centerX);
+            }
+            // 회전 변환
+            const rx = lx * Math.cos(rad) - ly * Math.sin(rad);
+            const ry = lx * Math.sin(rad) + ly * Math.cos(rad);
+            return { x: tempX + rx, y: tempY + ry };
+        });
+    }
+
+    // 마우스/터치 드래그 추적 및 정밀 자석(꼭짓점 근접 스냅) 계산
+    const handleMove = (e) => {
+        const pt = getSVGPoint(e);
+        if (isDragging && dragTarget) {
+            if (e.cancelable) e.preventDefault(); 
+            
+            // 기본 모눈 반 칸 스냅 (20px 단위) 적용하여 유연성 확보
+            let targetX = Math.round((pt.x - startX) / (GRID_SIZE / 2)) * (GRID_SIZE / 2);
+            let targetY = Math.round((pt.y - startY) / (GRID_SIZE / 2)) * (GRID_SIZE / 2);
+
+            // 다른 도형 조각들과의 실시간 꼭짓점 자석 결합 검증
+            let bestSnap = null;
+            let minDistance = 16; // 정밀 자석 결합 범위 (16픽셀 이내 진입 시 밀착)
+
+            const dragAbsPoints = getAbsolutePoints(dragTarget, targetX, targetY);
+
+            shapes.forEach(other => {
+                if (other.id === dragTarget.id) return;
+                const otherAbsPoints = getAbsolutePoints(other);
+
+                dragAbsPoints.forEach(dp => {
+                    otherAbsPoints.forEach(op => {
+                        const dist = Math.hypot(dp.x - op.x, dp.y - op.y);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            bestSnap = {
+                                dx: op.x - dp.x,
+                                dy: op.y - dp.y
+                            };
+                        }
+                    });
+                });
+            });
+
+            // 자석 밀착 적용 오프셋 추가
+            if (bestSnap) {
+                targetX += bestSnap.dx;
+                targetY += bestSnap.dy;
+            }
+
+            dragTarget.x = targetX;
+            dragTarget.y = targetY;
+            renderShapes();
+        } else if (cutStart) {
+            if (e.cancelable) e.preventDefault(); 
+            cutLine.setAttribute('x2', pt.x); cutLine.setAttribute('y2', pt.y);
+        }
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+
+    // 드래그 종료 및 자르기 완료 매핑
+    const handleEnd = (e) => {
+        if (cutStart) {
+            processCut(cutStart, getSVGPoint(e));
+            cutStart = null;
+            cutLine.setAttribute('visibility', 'hidden');
+        }
+        if (isDragging) {
+            isDragging = false;
+            dragTarget = null;
+            saveState();
+        }
+    };
+
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchend', handleEnd, { passive: false });
+
+    // 다각형 평면 분할 엔진
+    function processCut(p1, p2) {
+        let newShapes = [];
+        let splitOccurred = false;
+
+        shapes.forEach(shape => {
+            const localP1 = toLocal(p1, shape);
+            const localP2 = toLocal(p2, shape);
+            const result = splitPolygon(shape.points, localP1, localP2);
+            
+            if (result.length > 1) {
+                if(!splitOccurred) pushHistory(); 
+                splitOccurred = true;
+                result.forEach((newPoints, idx) => {
+                    newShapes.push({
+                        ...shape,
+                        id: Date.now() + Math.random(),
+                        points: newPoints,
+                        x: shape.x + (idx * 20), 
+                        y: shape.y + (idx * 20)
+                    });
+                });
+            } else {
+                newShapes.push(shape);
+            }
+        });
+
+        if (splitOccurred) {
+            shapes = newShapes;
+            selectedShapeId = null;
+            renderShapes();
+            showToast('다각형 조각 분할이 정상적으로 이루어졌습니다.');
+        }
+    }
+
+    // 로컬 좌표로 역변환 (스냅 대응 및 반전 적용 로직)
+    function toLocal(p, shape) {
+        const rad = -shape.rotation * Math.PI / 180;
+        let dx = p.x - shape.x;
+        let dy = p.y - shape.y;
+        
+        let lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+        let ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+        
+        if (shape.flipped) {
+            const xs = shape.points.map(pt => pt[0]);
+            const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+            lx = centerX - (lx - centerX);
+        }
+        
+        return { x: lx, y: ly };
+    }
+
+    // 다각형 두 파트로 조각내기
+    function splitPolygon(poly, p1, p2) {
+        let intersections = [];
+        for (let i = 0; i < poly.length; i++) {
+            const a = {x: poly[i][0], y: poly[i][1]};
+            const b = {x: poly[(i+1)%poly.length][0], y: poly[(i+1)%poly.length][1]};
+            const intersect = getLineIntersection(p1, p2, a, b);
+            if (intersect) intersections.push({pos: intersect, afterIndex: i});
+        }
+        if (intersections.length >= 2) {
+            const i1 = intersections[0]; const i2 = intersections[1];
+            const part1 = [[i1.pos.x, i1.pos.y]];
+            for (let i = (i1.afterIndex + 1) % poly.length; i !== (i2.afterIndex + 1) % poly.length; i = (i + 1) % poly.length) part1.push(poly[i]);
+            part1.push([i2.pos.x, i2.pos.y]);
+            const part2 = [[i2.pos.x, i2.pos.y]];
+            for (let i = (i2.afterIndex + 1) % poly.length; i !== (i1.afterIndex + 1) % poly.length; i = (i + 1) % poly.length) part2.push(poly[i]);
+            part2.push([i1.pos.x, i1.pos.y]);
+            return [part1, part2];
+        }
+        return [poly];
+    }
+
+    // 선분 간 교점 검출 알고리즘
+    function getLineIntersection(p1, p2, p3, p4) {
+        const den = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+        if (den === 0) return null;
+        const t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / den;
+        const u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / den;
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+        return null;
+    }
+
+    // 모든 작업 초기화
+    function clearCanvas() {
+        if(confirm('진행하고 있는 모든 탐구 내용을 삭제하고 초기 상태로 환원하시겠습니까?')) {
+            pushHistory();
+            shapes = [];
+            selectedShapeId = null;
+            renderShapes();
+            saveState();
+            showToast('캔버스의 모든 작업 내역이 초기화되었습니다.');
+        }
+    }
+
+    // 브라우저 내부 스토리지 자동 저장
+    function saveState() {
+        localStorage.setItem('polygon_master_v4', JSON.stringify(shapes));
+    }
+
+    // 토스트 팝업 제어
+    function showToast(msg) {
+        toast.innerText = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // 단축키 이벤트 바인딩 (PC 사용자 지원 - 실행취소 매핑)
+    window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'z') undo();
+    });
+</script>
+</body>
+</html>
